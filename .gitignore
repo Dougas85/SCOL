@@ -8,3 +8,5 @@ __pycache__/
 *.parquet
 *.exe
 *.spec
+.idea/
+.env.txt
