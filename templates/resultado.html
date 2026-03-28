@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Resultado — Coletas Repetidas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy:    #0a1628;
+            --blue:    #1a3a6b;
+            --accent:  #2563eb;
+            --light:   #e8f0fe;
+            --muted:   #64748b;
+            --surface: #f8faff;
+            --white:   #ffffff;
+            --border:  #dde5f5;
+            --danger:  #dc2626;
+            --success: #16a34a;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Sora', sans-serif;
+            background: var(--surface);
+            color: var(--navy);
+            min-height: 100vh;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37,99,235,0.10) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 1160px;
+            margin: 0 auto;
+            padding: 48px 24px 60px;
+        }
+
+        /* ── TOP BAR ── */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 36px;
+            flex-wrap: wrap;
+            gap: 12px;
+            animation: fadeDown 0.5s ease both;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-icon {
+            width: 38px; height: 38px;
+            background: linear-gradient(135deg, var(--accent), var(--blue));
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 17px;
+        }
+
+        .brand-name {
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .topbar-actions { display: flex; gap: 10px; }
+
+        .btn-back {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 9px 18px;
+            border-radius: 10px;
+            border: 1.5px solid var(--border);
+            background: var(--white);
+            color: var(--navy);
+            font-family: 'Sora', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(10,22,40,0.06);
+        }
+        .btn-back:hover { border-color: var(--accent); color: var(--accent); background: var(--light); }
+
+        .btn-pdf {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 9px 18px;
+            border-radius: 10px;
+            border: none;
+            background: linear-gradient(135deg, var(--accent), var(--blue));
+            color: white;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px rgba(37,99,235,0.3);
+        }
+        .btn-pdf:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37,99,235,0.4); color: white; }
+
+        /* ── PAGE TITLE ── */
+        .page-title {
+            font-size: clamp(1.6rem, 4vw, 2.2rem);
+            font-weight: 800;
+            color: var(--navy);
+            margin-bottom: 6px;
+            animation: fadeDown 0.5s 0.1s ease both;
+        }
+        .page-title span { color: var(--accent); }
+
+        .page-sub {
+            font-size: 0.88rem;
+            color: var(--muted);
+            font-weight: 300;
+            margin-bottom: 32px;
+            animation: fadeDown 0.5s 0.15s ease both;
+        }
+
+        /* ── METRIC CARDS ── */
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .metric-card {
+            background: var(--white);
+            border-radius: 16px;
+            padding: 22px 24px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 12px rgba(10,22,40,0.06);
+            animation: fadeUp 0.5s ease both;
+        }
+        .metric-card:nth-child(1) { animation-delay: 0.2s; }
+        .metric-card:nth-child(2) { animation-delay: 0.3s; border-left: 4px solid var(--danger); }
+
+        .metric-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--navy);
+            line-height: 1;
+        }
+
+        .metric-card:nth-child(2) .metric-value { color: var(--danger); }
+
+        .metric-desc {
+            font-size: 0.78rem;
+            color: var(--muted);
+            font-weight: 300;
+            margin-top: 6px;
+        }
+
+        /* ── TABLE CARD ── */
+        .table-card {
+            background: var(--white);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 24px rgba(10,22,40,0.07);
+            overflow: hidden;
+            animation: fadeUp 0.5s 0.4s ease both;
+        }
+
+        .table-header {
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .table-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--navy);
+        }
+
+        .table-badge {
+            background: var(--light);
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
+
+        /* ── TABLE STYLES ── */
+        .table-responsive { overflow-x: auto; }
+
+        table.table {
+            width: 100% !important;
+            margin: 0 !important;
+            font-size: 0.85rem;
+            border-collapse: collapse;
+        }
+
+        table.table thead tr {
+            background: var(--navy) !important;
+        }
+
+        table.table thead th {
+            color: rgba(255,255,255,0.85) !important;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            padding: 14px 16px !important;
+            border: none !important;
+            white-space: nowrap;
+        }
+
+        table.table tbody tr {
+            border-bottom: 1px solid var(--border) !important;
+            transition: background 0.15s ease;
+        }
+
+        table.table tbody tr:hover {
+            background: var(--light) !important;
+        }
+
+        table.table tbody tr:last-child {
+            border-bottom: none !important;
+        }
+
+        table.table td {
+            padding: 12px 16px !important;
+            vertical-align: middle !important;
+            border: none !important;
+            color: var(--navy);
+        }
+
+        /* CEP column */
+        table.table td:nth-child(1) {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            font-size: 0.82rem;
+            color: var(--accent);
+            white-space: nowrap;
+        }
+
+        /* Remetente */
+        table.table td:nth-child(2) {
+            font-weight: 600;
+            font-size: 0.83rem;
+        }
+
+        /* Endereço */
+        table.table td:nth-child(3) {
+            color: var(--muted);
+            font-weight: 300;
+            font-size: 0.82rem;
+        }
+
+        /* Status */
+        table.table td:nth-child(4) {
+            white-space: nowrap;
+        }
+
+        table.table td:nth-child(4) span {
+            display: inline-block;
+            background: rgba(220,38,38,0.1);
+            color: var(--danger);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 6px;
+            letter-spacing: 0.04em;
+        }
+
+        /* ── ANIMATIONS ── */
+        @keyframes fadeDown {
+            from { opacity: 0; transform: translateY(-14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 576px) {
+            .wrapper { padding: 28px 16px 40px; }
+            .topbar { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrapper">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <div class="topbar-left">
+            <div class="brand-icon">📦</div>
+            <span class="brand-name">Correios · Coletas</span>
+        </div>
+        <div class="topbar-actions">
+            <a href="{{ url_for('index') }}" class="btn-back">← Voltar</a>
+            <a href="{{ url_for('download_pdf') }}" class="btn-pdf">📄 Baixar PDF</a>
+        </div>
+    </div>
+
+    <!-- TITLE -->
+    <h1 class="page-title">Resultado do <span>Processamento</span></h1>
+    <p class="page-sub">Endereços VIVO encontrados na base histórica</p>
+
+    <!-- METRICS -->
+    <div class="metrics">
+        <div class="metric-card">
+            <div class="metric-label">Total Telefônica VIVO</div>
+            <div class="metric-value">{{ total_vivo }}</div>
+            <div class="metric-desc">coletas no arquivo do dia</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Endereços Repetidos</div>
+            <div class="metric-value">{{ total_repetidos }}</div>
+            <div class="metric-desc">encontrados na base histórica</div>
+        </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-card">
+        <div class="table-header">
+            <span class="table-title">Coletas VIVO — Histórico</span>
+            <span class="table-badge">{{ total_repetidos }} registros</span>
+        </div>
+        <div class="table-responsive">
+            {{ table|safe }}
+        </div>
+    </div>
+
+    <footer style="text-align:center; margin-top:40px; font-size:0.75rem; color:var(--muted); font-weight:300; letter-spacing:0.04em;">
+        <strong style="color:var(--blue); font-weight:600;">Sistema de Cruzamento de Coletas</strong> — DFS
+        <br><br>&copy; 2026 DFS. Todos os direitos reservados.
+    </footer>
+
+</div>
+
+<script>
+    // Wrap status cells in <span> for badge styling
+    document.querySelectorAll('table td:nth-child(4)').forEach(td => {
+        if (td.textContent.trim()) {
+            td.innerHTML = `<span>${td.textContent.trim()}</span>`;
+        }
+    });
+</script>
+</body>
+</html>

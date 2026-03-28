@@ -1,0 +1,6 @@
+flask
+pandas
+fpdf
+unidecode
+psycopg2-binary
+python-dotenv
