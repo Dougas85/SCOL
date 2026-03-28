@@ -1,6 +1,6 @@
-# 📦 Sistema de Cruzamento de Coletas — Correios
+# 📦 Sistema de Cruzamento de Coletas — 
 
-Sistema web desenvolvido em Python/Flask para cruzamento automático de coletas diárias da **Telefônica VIVO** com uma base histórica, identificando endereços repetidos.
+Sistema web desenvolvido em Python/Flask para cruzamento automático de coletas diárias de ** Determinado Cliente** com uma base histórica, identificando endereços repetidos.
 
 ---
 
@@ -8,7 +8,7 @@ Sistema web desenvolvido em Python/Flask para cruzamento automático de coletas 
 
 - Upload de arquivo diário (`.txt` ou `.csv`) via interface web
 - Cruzamento automático com base histórica de até 300k+ registros
-- Filtragem automática de coletas **VIVO/Telefônica**
+- Filtragem automática de coletas **Do cliente**
 - Identificação de endereços repetidos com status histórico
 - Exportação dos resultados em **PDF**
 - Interface moderna e responsiva
@@ -95,7 +95,7 @@ O navegador abrirá automaticamente em `http://localhost:5000`.
 2. Verifique o total de registros da base histórica carregada
 3. Faça o upload do arquivo `.txt` ou `.csv` do dia
 4. Clique em **Processar Arquivo**
-5. Visualize os endereços VIVO repetidos, ordenados por CEP
+5. Visualize os endereços  repetidos, ordenados por CEP
 6. Baixe o relatório em **PDF** se necessário
 
 ---
