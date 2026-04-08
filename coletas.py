@@ -148,9 +148,9 @@ def parse_txt_to_df(path_or_bytes, is_bytes=False):
 # ================================================================
 # CONSULTA NO BANCO — busca todas as chaves de uma vez (1 query)
 # ================================================================
-def buscar_status_por_chaves(chaves: list) -> dict:
+def buscar_dados_por_chaves(chaves: list) -> dict:
     """
-    Recebe uma lista de chaves e retorna um dict {chave: status_coleta}.
+    Recebe uma lista de chaves e retorna um dict {chave: (numero_coleta, status_coleta)}.
     Faz UMA única query com ANY() — muito eficiente com índice.
     """
     if not chaves:
@@ -160,13 +160,13 @@ def buscar_status_por_chaves(chaves: list) -> dict:
         cur  = conn.cursor()
         cur.execute(
             """
-            SELECT DISTINCT ON (chave) chave, status_coleta
+            SELECT DISTINCT ON (chave) chave, numero_coleta, status_coleta
             FROM base_coletas
             WHERE chave = ANY(%s)
             """,
             (chaves,)
         )
-        resultado = {row[0]: row[1] for row in cur.fetchall()}
+        resultado = {row[0]: {'numero_coleta': row[1], 'status_coleta': row[2]} for row in cur.fetchall()}
         cur.close()
         conn.close()
         return resultado
@@ -202,10 +202,15 @@ def upload_dia():
 
     # 3. Consulta o banco com UMA query (todas as chaves de uma vez)
     chaves = df_vivo['chave'].unique().tolist()
-    status_map = buscar_status_por_chaves(chaves)
+    dados_map = buscar_dados_por_chaves(chaves)
 
     # 4. Aplica o resultado
-    df_vivo['StatusColeta'] = df_vivo['chave'].map(status_map)
+    df_vivo['NumeroColeta'] = df_vivo['chave'].map(
+        lambda c: dados_map[c]['numero_coleta'] if c in dados_map else None
+    )
+    df_vivo['StatusColeta'] = df_vivo['chave'].map(
+        lambda c: dados_map[c]['status_coleta'] if c in dados_map else None
+    )
     df_final = df_vivo[df_vivo['StatusColeta'].notna()].copy()
 
     # 5. Ordena por CEP
@@ -215,11 +220,11 @@ def upload_dia():
 
     DF_MATCH = df_final.copy()
 
-    # 6. Gera tabela HTML
-    tabela_html = DF_MATCH[['CEPOrigem', 'Remetente', 'EnderecoOrigem', 'StatusColeta']].to_html(
+    # 6. Gera tabela HTML (com N° Coleta)
+    tabela_html = DF_MATCH[['NumeroColeta', 'CEPOrigem', 'Remetente', 'EnderecoOrigem', 'StatusColeta']].to_html(
         classes='table table-sm table-striped table-bordered',
         index=False,
-        header=["CEP", "REMETENTE", "ENDEREÇO", "STATUS (HISTÓRICO)"]
+        header=["N° COLETA", "CEP", "REMETENTE", "ENDEREÇO", "STATUS (HISTÓRICO)"]
     )
 
     return render_template('resultado.html', table=tabela_html,
@@ -238,18 +243,21 @@ def download_pdf():
     pdf.cell(190, 10, "Relatorio de Coletas Repetidas", ln=True, align='C')
     pdf.ln(5)
 
+    # Cabeçalho com N° Coleta
     pdf.set_font("Arial", 'B', 8)
+    pdf.cell(28, 7, "N  COLETA", 1)   # N° com acento removido pelo latin-1
     pdf.cell(25, 7, "CEP", 1)
-    pdf.cell(50, 7, "REMETENTE", 1)
-    pdf.cell(75, 7, "ENDERECO", 1)
-    pdf.cell(40, 7, "STATUS", 1, 1)
+    pdf.cell(45, 7, "REMETENTE", 1)
+    pdf.cell(60, 7, "ENDERECO", 1)
+    pdf.cell(32, 7, "STATUS", 1, 1)
 
     pdf.set_font("Arial", '', 7)
     for _, row in DF_MATCH.iterrows():
+        pdf.cell(28, 6, str(row.get('NumeroColeta', ''))[:18], 1)
         pdf.cell(25, 6, str(row['CEPOrigem']), 1)
-        pdf.cell(50, 6, unidecode(str(row['Remetente']))[:35], 1)
-        pdf.cell(75, 6, unidecode(str(row['EnderecoOrigem']))[:55], 1)
-        pdf.cell(40, 6, unidecode(str(row['StatusColeta']))[:25], 1)
+        pdf.cell(45, 6, unidecode(str(row['Remetente']))[:30], 1)
+        pdf.cell(60, 6, unidecode(str(row['EnderecoOrigem']))[:45], 1)
+        pdf.cell(32, 6, unidecode(str(row['StatusColeta']))[:22], 1)
         pdf.ln()
 
     out = BytesIO()
