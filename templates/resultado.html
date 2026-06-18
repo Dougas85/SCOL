@@ -138,7 +138,7 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 16px;
-            margin-bottom: 32px;
+            margin-bottom: 24px;
         }
 
         .metric-card {
@@ -178,6 +178,156 @@
             margin-top: 6px;
         }
 
+        /* ── CEP FILTER CARD ── */
+        .filter-card {
+            background: var(--white);
+            border-radius: 16px;
+            padding: 22px 24px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 12px rgba(10,22,40,0.06);
+            margin-bottom: 24px;
+            animation: fadeUp 0.5s 0.35s ease both;
+        }
+
+        .filter-card-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-card-title::before {
+            content: '';
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        .filter-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex: 1;
+            min-width: 140px;
+        }
+
+        .filter-group label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--muted);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .filter-input {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: var(--navy);
+            background: var(--surface);
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 14px;
+            width: 100%;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            outline: none;
+        }
+
+        .filter-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+
+        .filter-sep {
+            font-size: 1.1rem;
+            color: var(--muted);
+            font-weight: 300;
+            padding-top: 22px;
+            flex-shrink: 0;
+        }
+
+        .btn-filter {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 11px 22px;
+            background: linear-gradient(135deg, var(--accent), var(--blue));
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px rgba(37,99,235,0.28);
+            white-space: nowrap;
+            margin-top: 22px;
+            flex-shrink: 0;
+        }
+
+        .btn-filter:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37,99,235,0.38);
+        }
+
+        .btn-filter:active { transform: translateY(0); }
+
+        .btn-clear {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 11px 16px;
+            background: var(--white);
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            color: var(--muted);
+            font-family: 'Sora', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            white-space: nowrap;
+            margin-top: 22px;
+            flex-shrink: 0;
+        }
+
+        .btn-clear:hover {
+            border-color: var(--danger);
+            color: var(--danger);
+            background: rgba(220,38,38,0.04);
+        }
+
+        /* Badge de filtro ativo */
+        .filter-active-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(37,99,235,0.1);
+            color: var(--accent);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-left: 8px;
+            letter-spacing: 0.04em;
+        }
+
         /* ── TABLE CARD ── */
         .table-card {
             background: var(--white);
@@ -202,6 +352,10 @@
             font-size: 0.95rem;
             font-weight: 700;
             color: var(--navy);
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px;
         }
 
         .table-badge {
@@ -260,7 +414,6 @@
             color: var(--navy);
         }
 
-        /* CEP column */
         table.table td:nth-child(1) {
             font-family: 'JetBrains Mono', monospace;
             font-weight: 600;
@@ -269,20 +422,17 @@
             white-space: nowrap;
         }
 
-        /* Remetente */
         table.table td:nth-child(2) {
             font-weight: 600;
             font-size: 0.83rem;
         }
 
-        /* Endereço */
         table.table td:nth-child(3) {
             color: var(--muted);
             font-weight: 300;
             font-size: 0.82rem;
         }
 
-        /* Status */
         table.table td:nth-child(4) {
             white-space: nowrap;
         }
@@ -312,6 +462,8 @@
         @media (max-width: 576px) {
             .wrapper { padding: 28px 16px 40px; }
             .topbar { flex-direction: column; align-items: flex-start; }
+            .filter-sep { display: none; }
+            .btn-filter, .btn-clear { margin-top: 4px; }
         }
     </style>
 </head>
@@ -344,14 +496,67 @@
         <div class="metric-card">
             <div class="metric-label">Endereços Repetidos</div>
             <div class="metric-value">{{ total_repetidos }}</div>
-            <div class="metric-desc">encontrados na base histórica</div>
+            <div class="metric-desc">
+                {% if cep_min and cep_max %}
+                    CEP {{ cep_min }} – {{ cep_max }}
+                {% else %}
+                    encontrados na base histórica
+                {% endif %}
+            </div>
         </div>
+    </div>
+
+    <!-- FILTRO DE CEP -->
+    <div class="filter-card">
+        <div class="filter-card-title">Filtrar por faixa de CEP da sua unidade</div>
+        <form method="post" action="{{ url_for('filtrar_cep') }}" id="filterForm">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="cep_min">CEP inicial</label>
+                    <input
+                        class="filter-input"
+                        type="text"
+                        id="cep_min"
+                        name="cep_min"
+                        placeholder="19010000"
+                        maxlength="9"
+                        value="{{ cep_min or '' }}"
+                        inputmode="numeric"
+                    >
+                </div>
+                <span class="filter-sep">→</span>
+                <div class="filter-group">
+                    <label for="cep_max">CEP final</label>
+                    <input
+                        class="filter-input"
+                        type="text"
+                        id="cep_max"
+                        name="cep_max"
+                        placeholder="19039999"
+                        maxlength="9"
+                        value="{{ cep_max or '' }}"
+                        inputmode="numeric"
+                    >
+                </div>
+                <button class="btn-filter" type="submit" id="btnFilter">
+                    🔍 Filtrar
+                </button>
+                {% if cep_min and cep_max %}
+                <a href="{{ url_for('limpar_filtro') }}" class="btn-clear">✕ Limpar</a>
+                {% endif %}
+            </div>
+        </form>
     </div>
 
     <!-- TABLE -->
     <div class="table-card">
         <div class="table-header">
-            <span class="table-title">Coletas VIVO — Histórico</span>
+            <span class="table-title">
+                Coletas VIVO — Histórico
+                {% if cep_min and cep_max %}
+                <span class="filter-active-badge">📍 CEP {{ cep_min }} – {{ cep_max }}</span>
+                {% endif %}
+            </span>
             <span class="table-badge">{{ total_repetidos }} registros</span>
         </div>
         <div class="table-responsive">
@@ -367,11 +572,29 @@
 </div>
 
 <script>
-    // Wrap status cells in <span> for badge styling
-    document.querySelectorAll('table td:nth-child(4)').forEach(td => {
+    // Badge de status na tabela
+    document.querySelectorAll('table td:nth-child(5)').forEach(td => {
         if (td.textContent.trim()) {
             td.innerHTML = `<span>${td.textContent.trim()}</span>`;
         }
+    });
+
+    // Máscara de CEP: aceita com ou sem hífen
+    function maskCep(input) {
+        input.addEventListener('input', () => {
+            let v = input.value.replace(/\D/g, '').slice(0, 8);
+            if (v.length > 5) v = v.slice(0,5) + '-' + v.slice(5);
+            input.value = v;
+        });
+    }
+    maskCep(document.getElementById('cep_min'));
+    maskCep(document.getElementById('cep_max'));
+
+    // Loading no botão de filtro
+    document.getElementById('filterForm').addEventListener('submit', () => {
+        const btn = document.getElementById('btnFilter');
+        btn.textContent = 'Filtrando…';
+        btn.disabled = true;
     });
 </script>
 </body>
