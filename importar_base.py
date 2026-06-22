@@ -21,8 +21,9 @@ if not DATABASE_URL:
     print("ERRO: variável DATABASE_URL não encontrada no .env")
     sys.exit(1)
 
+
 # ================================================================
-# FUNÇÕES DE PARSING
+# FUNÇÕES DE NORMALIZAÇÃO
 # ================================================================
 
 def try_decode_bytes(b: bytes):
@@ -45,96 +46,116 @@ def norm_cep(s):
     return s.zfill(8) if s else ''
 
 
+# ================================================================
+# PARSING — detecta formato automaticamente
+# ================================================================
+
 def parse_txt(path):
     """
-    Lê o arquivo exportado do sistema de coletas.
+    Detecta automaticamente o formato do arquivo e faz o parse correto.
 
-    Estrutura do arquivo (todos os formatos):
-      - Linha 0: título do relatório + TAB + cabeçalho + TAB + primeiro registro
-                 (tudo junto na mesma linha, separado por TAB)
-      - Linhas 1+: registros normais com 15 colunas separadas por TAB
+    FORMATO A — linha 0 contém título + cabeçalho + 1º registro tudo junto (≥14 tabs).
+    FORMATO B — título em linhas separadas; cabeçalho em linha própria com 14 tabs.
 
-    Chave gerada: Remetente|CEP  (sem endereço — garante compatibilidade
-    entre arquivos locais e nacionais, que trazem o endereço em formatos
-    diferentes/truncados)
+    Chave: Remetente|CEP — compatível com endereços completos ou truncados.
     """
     with open(path, 'rb') as f:
         text = try_decode_bytes(f.read())
 
-    linhas = [l.strip() for l in text.splitlines() if l.strip()]
-    if not linhas:
+    todas = text.splitlines()
+    if not todas:
         return []
 
-    # ------------------------------------------------------------------
-    # Determina o número real de colunas pela primeira linha de dados
-    # ------------------------------------------------------------------
-    linha0_parts = linhas[0].split('\t')
-    linha1_parts = linhas[1].split('\t') if len(linhas) > 1 else []
-    n_cols = len(linha1_parts)  # deve ser 15
+    linha0_tabs = todas[0].count('\t')
 
-    # ------------------------------------------------------------------
-    # Extrai o cabeçalho das primeiras n_cols partes da linha 0
-    # ------------------------------------------------------------------
-    header = linha0_parts[:n_cols]
+    if linha0_tabs >= 14:
+        # ----------------------------------------------------------
+        # FORMATO A: tudo na linha 0
+        # ----------------------------------------------------------
+        linhas = [l.strip() for l in todas if l.strip()]
+        linha0_parts = linhas[0].split('\t')
+        linha1_parts = linhas[1].split('\t') if len(linhas) > 1 else []
+        n_cols = len(linha1_parts)
 
-    # Col [0] está contaminada com o título → renomear para "Coleta"
-    header[0] = 'Coleta'
+        header = linha0_parts[:n_cols]
+        header[0] = 'Coleta'
+        match_num = re.search(r'(\d{7,})', header[-1])
+        first_pedido_num = match_num.group(1) if match_num else ''
+        header[-1] = re.sub(r'\s+\d+.*$', '', header[-1]).strip()
 
-    # Col [-1] = "CEP Destino XXXXXXXX" → limpar e extrair nº do 1º pedido
-    match_num = re.search(r'(\d{7,})', header[-1])
-    first_pedido_num = match_num.group(1) if match_num else ''
-    header[-1] = re.sub(r'\s+\d+.*$', '', header[-1]).strip()  # "CEP Destino"
+        first_row_extra = linha0_parts[n_cols:]
+        first_row = [first_pedido_num] + first_row_extra \
+            if first_pedido_num and len(first_row_extra) == n_cols - 1 else None
 
-    # ------------------------------------------------------------------
-    # Recupera o 1º registro embutido na linha 0
-    # ------------------------------------------------------------------
-    first_row_extra = linha0_parts[n_cols:]
-    if first_pedido_num and len(first_row_extra) == n_cols - 1:
-        first_row = [first_pedido_num] + first_row_extra
+        colmap = {}
+        for i, c in enumerate(header):
+            c_low = unidecode(c.lower())
+            if   c_low == 'coleta':        colmap[i] = 'NumeroColeta'
+            elif 'remetent'    in c_low:   colmap[i] = 'Remetente'
+            elif 'destinat'    in c_low:   colmap[i] = 'Destinatario'
+            elif 'endereco orig' in c_low: colmap[i] = 'EnderecoOrigem'
+            elif 'cep orig'    in c_low:   colmap[i] = 'CEPOrigem'
+            elif 'status coleta' in c_low: colmap[i] = 'StatusColeta'
+
+        def processar(cols):
+            if len(cols) < 5: return None
+            if len(cols) < n_cols: cols += [''] * (n_cols - len(cols))
+            cols = cols[:n_cols]
+            row = {v: cols[k] for k, v in colmap.items()}
+            for need in ('NumeroColeta', 'Remetente', 'EnderecoOrigem', 'CEPOrigem', 'Destinatario', 'StatusColeta'):
+                if need not in row: row[need] = ''
+            row['chave'] = norm_text(row['Remetente']) + '|' + norm_cep(row['CEPOrigem'])
+            return row
+
+        registros = []
+        if first_row:
+            r = processar(first_row)
+            if r: registros.append(r)
+        for l in linhas[1:]:
+            r = processar(l.split('\t'))
+            if r: registros.append(r)
+
     else:
-        first_row = None
+        # ----------------------------------------------------------
+        # FORMATO B: cabeçalho em linha própria (14 tabs)
+        # ----------------------------------------------------------
+        cab_idx = None
+        for i, l in enumerate(todas):
+            if l.count('\t') >= 14 and 'coleta' in unidecode(l.lower()):
+                cab_idx = i
+                break
 
-    # ------------------------------------------------------------------
-    # Mapeamento de índices → nomes padronizados
-    # ------------------------------------------------------------------
-    colmap = {}
-    for i, c in enumerate(header):
-        c_low = unidecode(c.lower())
-        if   'remetent'      in c_low: colmap[i] = 'Remetente'
-        elif 'destinat'      in c_low: colmap[i] = 'Destinatario'
-        elif 'endereco orig' in c_low: colmap[i] = 'EnderecoOrigem'
-        elif 'cep orig'      in c_low: colmap[i] = 'CEPOrigem'
-        elif 'status coleta' in c_low: colmap[i] = 'StatusColeta'
+        if cab_idx is None:
+            return []
 
-    # ------------------------------------------------------------------
-    # Monta os registros
-    # ------------------------------------------------------------------
-    def processar_cols(cols):
-        if len(cols) < 5:
-            return None
-        if len(cols) < n_cols:
-            cols += [''] * (n_cols - len(cols))
-        cols = cols[:n_cols]
-        row = {v: cols[k] for k, v in colmap.items()}
-        for need in ('Remetente', 'EnderecoOrigem', 'CEPOrigem', 'Destinatario', 'StatusColeta'):
-            if need not in row:
-                row[need] = ''
-        # Chave: Remetente + CEP (sem endereço — compatível com todos os formatos)
-        row['chave'] = norm_text(row['Remetente']) + '|' + norm_cep(row['CEPOrigem'])
-        return row
+        header = todas[cab_idx].split('\t')
+        n_cols = len(header)
 
-    registros = []
+        colmap = {}
+        for i, c in enumerate(header):
+            c_low = unidecode(c.lower())
+            if   c_low == 'coleta':        colmap[i] = 'NumeroColeta'
+            elif 'remetent'    in c_low:   colmap[i] = 'Remetente'
+            elif 'destinat'    in c_low:   colmap[i] = 'Destinatario'
+            elif 'endereco orig' in c_low: colmap[i] = 'EnderecoOrigem'
+            elif 'cep orig'    in c_low:   colmap[i] = 'CEPOrigem'
+            elif 'status coleta' in c_low: colmap[i] = 'StatusColeta'
 
-    if first_row:
-        r = processar_cols(first_row)
-        if r:
-            registros.append(r)
+        def processar(cols):
+            if len(cols) < 5: return None
+            if len(cols) < n_cols: cols += [''] * (n_cols - len(cols))
+            cols = cols[:n_cols]
+            row = {v: cols[k] for k, v in colmap.items()}
+            for need in ('NumeroColeta', 'Remetente', 'EnderecoOrigem', 'CEPOrigem', 'Destinatario', 'StatusColeta'):
+                if need not in row: row[need] = ''
+            row['chave'] = norm_text(row['Remetente']) + '|' + norm_cep(row['CEPOrigem'])
+            return row
 
-    for l in linhas[1:]:
-        cols = l.split('\t')
-        r = processar_cols(cols)
-        if r:
-            registros.append(r)
+        registros = []
+        for l in todas[cab_idx + 1:]:
+            if not l.strip(): continue
+            r = processar(l.split('\t'))
+            if r: registros.append(r)
 
     return registros
 
@@ -156,17 +177,16 @@ def importar(path_txt):
     conn = psycopg2.connect(DATABASE_URL)
     cur  = conn.cursor()
 
-    # Limpa a tabela antes de reimportar
     print("Limpando tabela anterior...")
     cur.execute("TRUNCATE TABLE base_coletas RESTART IDENTITY;")
 
-    # Insere em lotes de 5000
     BATCH = 5000
     print(f"Importando em lotes de {BATCH}...")
     for i in range(0, total, BATCH):
         lote = registros[i:i + BATCH]
         valores = [
             (
+                r['NumeroColeta'],
                 r['Remetente'],
                 r['EnderecoOrigem'],
                 r['CEPOrigem'],
@@ -179,7 +199,7 @@ def importar(path_txt):
         execute_values(cur,
             """
             INSERT INTO base_coletas
-                (remetente, endereco_origem, cep_origem, destinatario, status_coleta, chave)
+                (numero_coleta, remetente, endereco_origem, cep_origem, destinatario, status_coleta, chave)
             VALUES %s
             """,
             valores
