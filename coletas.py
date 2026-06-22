@@ -34,8 +34,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 app = Flask(__name__)
 app.secret_key = "chave_mestra_123"
 
-# DF_MATCH guarda o resultado completo (sem filtro de CEP)
-# DF_FILTERED guarda o resultado após filtro de CEP (pode ser igual ao completo)
 DF_MATCH    = None
 DF_FILTERED = None
 
@@ -89,16 +87,15 @@ def try_decode_bytes(b: bytes):
 
 def parse_txt_to_df(path_or_bytes, is_bytes=False):
     """
-    Lê o arquivo exportado do sistema de coletas.
+    Detecta automaticamente o formato do arquivo e faz o parse correto.
 
-    Estrutura do arquivo (ambos os formatos):
-      - Linha 0: título do relatório + TAB + colunas do cabeçalho + TAB + primeiro registro
-                 (tudo na mesma linha, separado por TAB)
-      - Linhas 1+: registros normais com 15 colunas separadas por TAB
+    FORMATO A — linha 0 contém título + cabeçalho + 1º registro tudo junto (≥14 tabs):
+      Ex: arquivos locais e nacionais antigos
 
-    Suporta dois formatos de data:
-      - Formato 1 (local):    DD/MM/AAAA-HH:MM       ex: 16/06/2026-10:08
-      - Formato 2 (nacional): AAAA-MM-DD HH:MM:SS.f  ex: 2026-06-13 00:15:28.0
+    FORMATO B — título em linhas separadas; cabeçalho em linha própria com 14 tabs:
+      Ex: arquivos nacionais novos (35k+ registros)
+
+    Chave: Remetente|CEP — compatível com endereços completos ou truncados.
     """
     if is_bytes:
         text = try_decode_bytes(path_or_bytes)
@@ -106,57 +103,73 @@ def parse_txt_to_df(path_or_bytes, is_bytes=False):
         with open(path_or_bytes, 'rb') as f:
             text = try_decode_bytes(f.read())
 
-    linhas = [l.strip() for l in text.splitlines() if l.strip()]
-    if not linhas:
+    todas = text.splitlines()
+    if not todas:
         return pd.DataFrame()
 
-    # ------------------------------------------------------------------
-    # Determina o número real de colunas a partir da primeira linha de dados
-    # ------------------------------------------------------------------
-    linha0_parts = linhas[0].split('\t')
-    linha1_parts = linhas[1].split('\t') if len(linhas) > 1 else []
-    n_cols = len(linha1_parts)  # deve ser 15
+    linha0_tabs = todas[0].count('\t')
 
-    # ------------------------------------------------------------------
-    # Extrai o cabeçalho: primeiras n_cols partes de linha0
-    # ------------------------------------------------------------------
-    header = linha0_parts[:n_cols]
+    if linha0_tabs >= 14:
+        # ----------------------------------------------------------
+        # FORMATO A: tudo na linha 0
+        # ----------------------------------------------------------
+        linhas = [l.strip() for l in todas if l.strip()]
+        linha0_parts = linhas[0].split('\t')
+        linha1_parts = linhas[1].split('\t') if len(linhas) > 1 else []
+        n_cols = len(linha1_parts)
 
-    # Col [0] está contaminada com o título do relatório → renomear para "Coleta"
-    header[0] = 'Coleta'
+        header = linha0_parts[:n_cols]
+        header[0] = 'Coleta'
+        match_num = re.search(r'(\d{7,})', header[-1])
+        first_pedido_num = match_num.group(1) if match_num else ''
+        header[-1] = re.sub(r'\s+\d+.*$', '', header[-1]).strip()
 
-    # Col [-1] = "CEP Destino XXXXXXXX" (número do 1º pedido colado)
-    # → extrair o número e limpar o nome da coluna
-    match_num = re.search(r'(\d{7,})', header[-1])
-    first_pedido_num = match_num.group(1) if match_num else ''
-    header[-1] = re.sub(r'\s+\d+.*$', '', header[-1]).strip()  # "CEP Destino"
+        first_row_extra = linha0_parts[n_cols:]
+        first_row = [first_pedido_num] + first_row_extra \
+            if first_pedido_num and len(first_row_extra) == n_cols - 1 else None
 
-    # ------------------------------------------------------------------
-    # Recupera o primeiro registro que ficou embutido na linha 0
-    # ------------------------------------------------------------------
-    first_row_extra = linha0_parts[n_cols:]  # 14 partes (sem o número do pedido)
-    if first_pedido_num and len(first_row_extra) == n_cols - 1:
-        first_row = [first_pedido_num] + first_row_extra
+        dados = []
+        if first_row:
+            dados.append(first_row)
+        for l in linhas[1:]:
+            cols = l.split('\t')
+            if len(cols) >= 5:
+                if len(cols) < n_cols:
+                    cols += [''] * (n_cols - len(cols))
+                dados.append(cols[:n_cols])
+
+        df = pd.DataFrame(dados, columns=header)
+
     else:
-        first_row = None  # estrutura inesperada — descarta
+        # ----------------------------------------------------------
+        # FORMATO B: cabeçalho em linha própria (14 tabs)
+        # ----------------------------------------------------------
+        cab_idx = None
+        for i, l in enumerate(todas):
+            if l.count('\t') >= 14 and 'coleta' in unidecode(l.lower()):
+                cab_idx = i
+                break
+
+        if cab_idx is None:
+            return pd.DataFrame()
+
+        header = todas[cab_idx].split('\t')
+        n_cols = len(header)
+
+        dados = []
+        for l in todas[cab_idx + 1:]:
+            if not l.strip():
+                continue
+            cols = l.split('\t')
+            if len(cols) >= 5:
+                if len(cols) < n_cols:
+                    cols += [''] * (n_cols - len(cols))
+                dados.append(cols[:n_cols])
+
+        df = pd.DataFrame(dados, columns=header)
 
     # ------------------------------------------------------------------
-    # Monta os dados
-    # ------------------------------------------------------------------
-    dados = []
-    if first_row:
-        dados.append(first_row)
-    for l in linhas[1:]:
-        cols = l.split('\t')
-        if len(cols) >= 5:
-            if len(cols) < n_cols:
-                cols += [''] * (n_cols - len(cols))
-            dados.append(cols[:n_cols])
-
-    df = pd.DataFrame(dados, columns=header)
-
-    # ------------------------------------------------------------------
-    # Mapeamento de colunas para nomes padronizados
+    # Mapeamento de colunas
     # ------------------------------------------------------------------
     colmap = {}
     for c in df.columns:
@@ -173,22 +186,15 @@ def parse_txt_to_df(path_or_bytes, is_bytes=False):
         if need not in df.columns:
             df[need] = ''
 
-    df['chave'] = (
-        df['Remetente'].map(norm_text) + '|' +
-        df['EnderecoOrigem'].map(norm_text) + '|' +
-        df['CEPOrigem'].map(norm_cep)
-    )
+    # Chave: Remetente + CEP (sem endereço — compatível com todos os formatos)
+    df['chave'] = df['Remetente'].map(norm_text) + '|' + df['CEPOrigem'].map(norm_cep)
     return df
 
 
 # ================================================================
-# CONSULTA NO BANCO — busca todas as chaves de uma vez (1 query)
+# CONSULTA NO BANCO
 # ================================================================
 def buscar_dados_por_chaves(chaves: list) -> dict:
-    """
-    Recebe uma lista de chaves e retorna um dict {chave: (numero_coleta, status_coleta)}.
-    Faz UMA única query com ANY() — muito eficiente com índice.
-    """
     if not chaves:
         return {}
     try:
@@ -240,18 +246,14 @@ def upload_dia():
     if not f:
         return redirect(url_for('index'))
 
-    # 1. Lê e processa o arquivo do dia
     df_dia = parse_txt_to_df(f.read(), is_bytes=True)
 
-    # 2. Filtra apenas VIVO
-    df_vivo = df_dia[df_dia['Destinatario'].str.contains("VIVO", case=False, na=False)].copy()
+    df_vivo = df_dia[df_dia['Destinatario'].str.contains("VIVO|TELEFON", case=False, na=False)].copy()
     total_vivo = len(df_vivo)
 
-    # 3. Consulta o banco com UMA query
     chaves = df_vivo['chave'].unique().tolist()
     dados_map = buscar_dados_por_chaves(chaves)
 
-    # 4. Aplica o resultado
     df_vivo['NumeroColeta'] = df_vivo['chave'].map(
         lambda c: dados_map[c]['numero_coleta'] if c in dados_map else None
     )
@@ -260,12 +262,10 @@ def upload_dia():
     )
     df_final = df_vivo[df_vivo['StatusColeta'].notna()].copy()
 
-    # 5. Ordena por CEP
     if not df_final.empty:
         df_final['CEP_SORT'] = df_final['CEPOrigem'].str.replace(r'\D', '', regex=True)
         df_final = df_final.sort_values(by='CEP_SORT').drop(columns=['CEP_SORT'])
 
-    # Guarda o resultado completo (sem filtro de CEP ainda)
     DF_MATCH    = df_final.copy()
     DF_FILTERED = df_final.copy()
 
@@ -283,10 +283,6 @@ def upload_dia():
 
 @app.route('/filtrar_cep', methods=['POST'])
 def filtrar_cep():
-    """
-    Recebe cep_min e cep_max via POST, refiltra DF_MATCH em memória
-    e devolve a página de resultado com a tabela filtrada.
-    """
     global DF_MATCH, DF_FILTERED
 
     if DF_MATCH is None or DF_MATCH.empty:
@@ -295,7 +291,6 @@ def filtrar_cep():
     cep_min_raw = request.form.get('cep_min', '').strip()
     cep_max_raw = request.form.get('cep_max', '').strip()
 
-    # Normaliza: remove tudo que não é dígito e preenche com zeros
     cep_min_num = norm_cep(cep_min_raw)
     cep_max_num = norm_cep(cep_max_raw)
 
@@ -303,7 +298,6 @@ def filtrar_cep():
         flash("Informe os dois CEPs para filtrar.", "warning")
         return redirect(url_for('index'))
 
-    # Filtra pelo CEP numérico (8 dígitos, zero-padded)
     df = DF_MATCH.copy()
     df['_cep_num'] = df['CEPOrigem'].apply(norm_cep)
     DF_FILTERED = df[
@@ -312,7 +306,6 @@ def filtrar_cep():
 
     tabela_html = df_to_html(DF_FILTERED)
 
-    # Formata para exibição (com hífen)
     def fmt_cep(c):
         c = re.sub(r'\D', '', c).zfill(8)
         return f"{c[:5]}-{c[5:]}" if len(c) == 8 else c
@@ -320,8 +313,8 @@ def filtrar_cep():
     return render_template(
         'resultado.html',
         table=tabela_html,
-        total_vivo=len(DF_MATCH),          # total geral (sem filtro)
-        total_repetidos=len(DF_FILTERED),  # total filtrado
+        total_vivo=len(DF_MATCH),
+        total_repetidos=len(DF_FILTERED),
         cep_min=fmt_cep(cep_min_raw),
         cep_max=fmt_cep(cep_max_raw),
     )
@@ -329,7 +322,6 @@ def filtrar_cep():
 
 @app.route('/limpar_filtro')
 def limpar_filtro():
-    """Remove o filtro de CEP e volta a exibir todos os registros."""
     global DF_MATCH, DF_FILTERED
 
     if DF_MATCH is None or DF_MATCH.empty:
