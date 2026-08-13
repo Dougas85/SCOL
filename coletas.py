@@ -1,6 +1,9 @@
 import os
 import re
 from io import BytesIO
+from datetime import datetime
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session
 import pandas as pd
 import psycopg2
@@ -73,6 +76,16 @@ def norm_cep(s):
     return s.zfill(8) if s else ''
 
 
+def clean_cell(s):
+    """Remove o formato =\"valor\" gerado por exportações do Excel."""
+    s = s.strip()
+    if s.startswith('=\"') and s.endswith('\"'):
+        s = s[2:-1]
+    elif s.startswith('\"') and s.endswith('\"'):
+        s = s[1:-1]
+    return s.strip()
+
+
 # ================================================================
 # PARSING DO ARQUIVO DO DIA
 # ================================================================
@@ -130,13 +143,13 @@ def parse_txt_to_df(path_or_bytes, is_bytes=False):
 
         dados = []
         if first_row:
-            dados.append(first_row)
+            dados.append([clean_cell(c) for c in first_row])
         for l in linhas[1:]:
             cols = l.split('\t')
             if len(cols) >= 5:
                 if len(cols) < n_cols:
                     cols += [''] * (n_cols - len(cols))
-                dados.append(cols[:n_cols])
+                dados.append([clean_cell(c) for c in cols[:n_cols]])
 
         df = pd.DataFrame(dados, columns=header)
 
@@ -164,7 +177,7 @@ def parse_txt_to_df(path_or_bytes, is_bytes=False):
             if len(cols) >= 5:
                 if len(cols) < n_cols:
                     cols += [''] * (n_cols - len(cols))
-                dados.append(cols[:n_cols])
+                dados.append([clean_cell(c) for c in cols[:n_cols]])
 
         df = pd.DataFrame(dados, columns=header)
 
@@ -221,10 +234,11 @@ def buscar_dados_por_chaves(chaves: list) -> dict:
 # HELPER — gera tabela HTML padronizada
 # ================================================================
 def df_to_html(df: pd.DataFrame) -> str:
-    return df[['NumeroColeta', 'CEPOrigem', 'Remetente', 'EnderecoOrigem', 'StatusColeta']].to_html(
+    out = df[['NumeroColeta', 'CEPOrigem', 'Remetente', 'EnderecoOrigem', 'StatusColeta']].copy()
+    out.columns = ['N° COLETA', 'CEP', 'REMETENTE', 'ENDEREÇO', 'STATUS (HISTÓRICO)']
+    return out.to_html(
         classes='table table-sm table-striped table-bordered',
         index=False,
-        header=["N° COLETA", "CEP", "REMETENTE", "ENDEREÇO", "STATUS (HISTÓRICO)"]
     )
 
 
@@ -373,6 +387,128 @@ def download_pdf():
     out.write(pdf_str)
     out.seek(0)
     return send_file(out, as_attachment=True, download_name="repetidos.pdf")
+
+
+
+@app.route('/relatorio_excel')
+def relatorio_excel():
+    """Gera Excel com coletas por cliente (histórico completo do banco)."""
+    SQL = """
+        SELECT
+            remetente,
+            cep_origem,
+            COUNT(*)                                                                AS total_coletas,
+            COUNT(*) FILTER (WHERE TRIM(status_coleta) ILIKE 'coleta cancelada')   AS coleta_cancelada,
+            COUNT(*) FILTER (WHERE TRIM(status_coleta) ILIKE '%tentativa%')        AS segunda_tentativa
+        FROM base_coletas
+        WHERE destinatario ILIKE '%vivo%' OR destinatario ILIKE '%telefonica%'
+        GROUP BY remetente, cep_origem
+        HAVING COUNT(*) > 1
+        ORDER BY total_coletas DESC
+    """
+    try:
+        conn = get_conn()
+        cur  = conn.cursor()
+        cur.execute(SQL)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        flash(f"Erro ao consultar banco: {e}", "danger")
+        return redirect(url_for('index'))
+
+    # ── Estilos ──────────────────────────────────────────────────
+    NAVY   = "0A1628"
+    ACCENT = "2563EB"
+    WHITE  = "FFFFFF"
+    LIGHT  = "E8F0FE"
+    RED    = "DC2626"
+    GRAY   = "F1F5F9"
+    BC     = "DDE5F5"
+
+    def brd(style="thin"):
+        s = Side(style=style, color=BC)
+        return Border(left=s, right=s, top=s, bottom=s)
+
+    def brd_total():
+        tk = Side(style="medium", color=NAVY)
+        tn = Side(style="thin",   color=BC)
+        return Border(left=tn, right=tn, top=tk, bottom=tk)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Coletas por Cliente"
+
+    # Título
+    ws.merge_cells("A1:E1")
+    ws["A1"] = "Relatório de Coletas Repetidas — VIVO / Telefônica"
+    ws["A1"].font      = Font(name="Arial", bold=True, size=14, color=WHITE)
+    ws["A1"].fill      = PatternFill("solid", fgColor=NAVY)
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 32
+
+    ws.merge_cells("A2:E2")
+    ws["A2"] = f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}  •  Histórico completo  •  {len(rows)} clientes"
+    ws["A2"].font      = Font(name="Arial", italic=True, size=9, color="64748B")
+    ws["A2"].fill      = PatternFill("solid", fgColor="E8F0FE")
+    ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[2].height = 18
+
+    # Cabeçalho
+    HEADERS = ["REMETENTE", "CEP", "TOTAL COLETAS", "COLETA CANCELADA", "2ª TENTATIVA / CANCELADA"]
+    for col, h in enumerate(HEADERS, 1):
+        c = ws.cell(row=3, column=col, value=h)
+        c.font      = Font(name="Arial", bold=True, size=9, color=WHITE)
+        c.fill      = PatternFill("solid", fgColor=ACCENT)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        c.border    = brd()
+    ws.row_dimensions[3].height = 28
+
+    # Dados
+    for i, (remetente, cep, total, cancelada, tentativa) in enumerate(rows, 1):
+        rn   = i + 3
+        fill = PatternFill("solid", fgColor=GRAY if i % 2 == 0 else WHITE)
+
+        def ce(col, val, align="left", bold=False, color=None):
+            c = ws.cell(row=rn, column=col, value=val)
+            c.font      = Font(name="Arial", size=9, bold=bold, color=color or NAVY)
+            c.fill      = fill
+            c.alignment = Alignment(horizontal=align, vertical="center")
+            c.border    = brd()
+
+        ce(1, remetente)
+        ce(2, cep,       align="center")
+        ce(3, total,     align="center", bold=True)
+        ce(4, cancelada, align="center", color=RED if cancelada > 0 else NAVY)
+        ce(5, tentativa, align="center", color=RED if tentativa > 0 else NAVY)
+
+    # Total
+    tr = len(rows) + 4
+    ws.merge_cells(f"A{tr}:B{tr}")
+    for col, val in [(1, "TOTAL GERAL"), (3, f"=SUM(C4:C{tr-1})"),
+                     (4, f"=SUM(D4:D{tr-1})"), (5, f"=SUM(E4:E{tr-1})")]:
+        c = ws.cell(row=tr, column=col, value=val)
+        c.font      = Font(name="Arial", bold=True, size=10, color=WHITE)
+        c.fill      = PatternFill("solid", fgColor=NAVY)
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border    = brd_total()
+    ws.row_dimensions[tr].height = 24
+
+    # Larguras e freeze
+    ws.column_dimensions["A"].width = 48
+    ws.column_dimensions["B"].width = 14
+    ws.column_dimensions["C"].width = 14
+    ws.column_dimensions["D"].width = 18
+    ws.column_dimensions["E"].width = 22
+    ws.freeze_panes = "A4"
+
+    # Enviar como download
+    out = BytesIO()
+    wb.save(out)
+    out.seek(0)
+    nome = f"relatorio_coletas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(out, as_attachment=True, download_name=nome,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 if __name__ == "__main__":
