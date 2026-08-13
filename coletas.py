@@ -2,13 +2,13 @@ import os
 import re
 from io import BytesIO
 from datetime import datetime
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session
 import pandas as pd
 import psycopg2
 from fpdf import FPDF
 from unidecode import unidecode
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import sys
 import webbrowser
 from threading import Timer
@@ -77,11 +77,11 @@ def norm_cep(s):
 
 
 def clean_cell(s):
-    """Remove o formato =\"valor\" gerado por exportações do Excel."""
+    """Remove o formato ="valor" gerado por exportações do Excel."""
     s = s.strip()
-    if s.startswith('=\"') and s.endswith('\"'):
+    if s.startswith('="') and s.endswith('"'):
         s = s[2:-1]
-    elif s.startswith('\"') and s.endswith('\"'):
+    elif s.startswith('"') and s.endswith('"'):
         s = s[1:-1]
     return s.strip()
 
@@ -102,11 +102,8 @@ def parse_txt_to_df(path_or_bytes, is_bytes=False):
     """
     Detecta automaticamente o formato do arquivo e faz o parse correto.
 
-    FORMATO A — linha 0 contém título + cabeçalho + 1º registro tudo junto (≥14 tabs):
-      Ex: arquivos locais e nacionais antigos
-
-    FORMATO B — título em linhas separadas; cabeçalho em linha própria com 14 tabs:
-      Ex: arquivos nacionais novos (35k+ registros)
+    FORMATO A — linha 0 contém título + cabeçalho + 1º registro tudo junto (>=14 tabs).
+    FORMATO B — título em linhas separadas; cabeçalho em linha própria com 14 tabs.
 
     Chave: Remetente|CEP — compatível com endereços completos ou truncados.
     """
@@ -389,12 +386,11 @@ def download_pdf():
     return send_file(out, as_attachment=True, download_name="repetidos.pdf")
 
 
-
 @app.route('/relatorio_excel')
 def relatorio_excel():
     """
-    Gera Excel com coletas por cliente (histórico completo).
-    A query agrupa no banco — só o resultado chega ao Python,
+    Gera Excel com coletas por cliente (histórico completo do banco).
+    A agregação é feita no banco — só o resumo chega ao Python,
     evitando out-of-memory com bases grandes (670k+ registros).
     """
     SQL = """
@@ -414,7 +410,7 @@ def relatorio_excel():
         conn = get_conn()
         cur  = conn.cursor()
         cur.execute(SQL)
-        rows = cur.fetchall()   # apenas linhas agregadas — muito menor que 670k
+        rows = cur.fetchall()
         cur.close()
         conn.close()
     except Exception as e:
@@ -438,7 +434,7 @@ def relatorio_excel():
         tn = Side(style="thin",   color=BC)
         return Border(left=tn, right=tn, top=tk, bottom=tk)
 
-    wb = openpyxl.Workbook(write_only=False)
+    wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Coletas por Cliente"
 
@@ -468,15 +464,15 @@ def relatorio_excel():
         c.border    = brd()
     ws.row_dimensions[3].height = 28
 
-    # Dados — gravar linha a linha sem acumular tudo em memória
+    # Dados
     for i, (remetente, cep, total, cancelada, tentativa) in enumerate(rows, 1):
         rn   = i + 3
         fill = PatternFill("solid", fgColor=GRAY if i % 2 == 0 else WHITE)
 
-        def ce(col, val, align="left", bold=False, color=None):
+        def ce(col, val, align="left", bold=False, color=None, _fill=fill):
             c = ws.cell(row=rn, column=col, value=val)
             c.font      = Font(name="Arial", size=9, bold=bold, color=color or NAVY)
-            c.fill      = fill
+            c.fill      = _fill
             c.alignment = Alignment(horizontal=align, vertical="center")
             c.border    = brd()
 
@@ -486,7 +482,7 @@ def relatorio_excel():
         ce(4, cancelada, align="center", color=RED if cancelada > 0 else NAVY)
         ce(5, tentativa, align="center", color=RED if tentativa > 0 else NAVY)
 
-    # Linha de total com fórmulas
+    # Linha de total
     tr = len(rows) + 4
     ws.merge_cells(f"A{tr}:B{tr}")
     for col, val in [
@@ -510,7 +506,6 @@ def relatorio_excel():
     ws.column_dimensions["E"].width = 22
     ws.freeze_panes = "A4"
 
-    # Salvar em BytesIO e enviar — sem tocar em disco
     out = BytesIO()
     wb.save(out)
     out.seek(0)
@@ -521,7 +516,6 @@ def relatorio_excel():
         download_name=nome,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
 
 
 if __name__ == "__main__":
