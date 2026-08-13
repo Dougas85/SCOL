@@ -8,6 +8,7 @@ import psycopg2
 from fpdf import FPDF
 from unidecode import unidecode
 import openpyxl
+import traceback
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import sys
 import webbrowser
@@ -414,10 +415,34 @@ def relatorio_excel():
         cur.close()
         conn.close()
     except Exception as e:
+        print(f"[RELATORIO] Erro SQL: {e}", flush=True)
         flash(f"Erro ao consultar banco: {e}", "danger")
         return redirect(url_for('index'))
 
-    # ── Estilos ──────────────────────────────────────────────────
+    try:
+        pass  # validação de rows
+        print(f"[RELATORIO] {len(rows)} clientes encontrados", flush=True)
+    except Exception as e:
+        print(f"[RELATORIO] Erro inesperado: {e}", flush=True)
+        flash(f"Erro inesperado: {e}", "danger")
+        return redirect(url_for('index'))
+
+    try:
+        _excel_out = _gerar_excel_relatorio(rows)
+        nome = f"relatorio_coletas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        return send_file(
+            _excel_out,
+            as_attachment=True,
+            download_name=nome,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as e:
+        print(f"[RELATORIO] Erro ao gerar Excel: {e}\n{traceback.format_exc()}", flush=True)
+        flash(f"Erro ao gerar Excel: {e}", "danger")
+        return redirect(url_for('index'))
+
+
+def _gerar_excel_relatorio(rows):
     NAVY   = "0A1628"
     ACCENT = "2563EB"
     WHITE  = "FFFFFF"
@@ -425,14 +450,18 @@ def relatorio_excel():
     RED    = "DC2626"
     BC     = "DDE5F5"
 
-    def brd():
-        s = Side(style="thin", color=BC)
-        return Border(left=s, right=s, top=s, bottom=s)
-
-    def brd_total():
-        tk = Side(style="medium", color=NAVY)
-        tn = Side(style="thin",   color=BC)
-        return Border(left=tn, right=tn, top=tk, bottom=tk)
+    # Criar objetos de borda UMA ÚNICA VEZ — reutilizar no loop
+    # (recriar Border() por célula causa recursão infinita no openpyxl/Python 3.14)
+    _side_thin   = Side(style="thin",   color=BC)
+    _side_medium = Side(style="medium", color=NAVY)
+    BORDER_CELL  = Border(
+        left=_side_thin, right=_side_thin,
+        top=_side_thin,  bottom=_side_thin
+    )
+    BORDER_TOTAL = Border(
+        left=_side_thin,   right=_side_thin,
+        top=_side_medium,  bottom=_side_medium
+    )
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -461,26 +490,30 @@ def relatorio_excel():
         c.font      = Font(name="Arial", bold=True, size=9, color=WHITE)
         c.fill      = PatternFill("solid", fgColor=ACCENT)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        c.border    = brd()
+        c.border    = BORDER_CELL
     ws.row_dimensions[3].height = 28
+
+    # Pré-criar fills para não recriar por linha
+    FILL_ODD  = PatternFill("solid", fgColor=WHITE)
+    FILL_EVEN = PatternFill("solid", fgColor=GRAY)
 
     # Dados
     for i, (remetente, cep, total, cancelada, tentativa) in enumerate(rows, 1):
         rn   = i + 3
-        fill = PatternFill("solid", fgColor=GRAY if i % 2 == 0 else WHITE)
+        fill = FILL_EVEN if i % 2 == 0 else FILL_ODD
 
-        def ce(col, val, align="left", bold=False, color=None, _fill=fill):
+        for col, val, align, bold, color in [
+            (1, remetente, "left",   False, NAVY),
+            (2, cep,       "center", False, NAVY),
+            (3, total,     "center", True,  NAVY),
+            (4, cancelada, "center", False, RED if cancelada > 0 else NAVY),
+            (5, tentativa, "center", False, RED if tentativa > 0 else NAVY),
+        ]:
             c = ws.cell(row=rn, column=col, value=val)
-            c.font      = Font(name="Arial", size=9, bold=bold, color=color or NAVY)
-            c.fill      = _fill
+            c.font      = Font(name="Arial", size=9, bold=bold, color=color)
+            c.fill      = fill
             c.alignment = Alignment(horizontal=align, vertical="center")
-            c.border    = brd()
-
-        ce(1, remetente)
-        ce(2, cep,       align="center")
-        ce(3, total,     align="center", bold=True)
-        ce(4, cancelada, align="center", color=RED if cancelada > 0 else NAVY)
-        ce(5, tentativa, align="center", color=RED if tentativa > 0 else NAVY)
+            c.border    = BORDER_CELL
 
     # Linha de total
     tr = len(rows) + 4
@@ -495,10 +528,9 @@ def relatorio_excel():
         c.font      = Font(name="Arial", bold=True, size=10, color=WHITE)
         c.fill      = PatternFill("solid", fgColor=NAVY)
         c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border    = brd_total()
+        c.border    = BORDER_TOTAL
     ws.row_dimensions[tr].height = 24
 
-    # Larguras e freeze
     ws.column_dimensions["A"].width = 48
     ws.column_dimensions["B"].width = 14
     ws.column_dimensions["C"].width = 14
@@ -509,13 +541,7 @@ def relatorio_excel():
     out = BytesIO()
     wb.save(out)
     out.seek(0)
-    nome = f"relatorio_coletas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-    return send_file(
-        out,
-        as_attachment=True,
-        download_name=nome,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    return out
 
 
 if __name__ == "__main__":
