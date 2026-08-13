@@ -5,3 +5,4 @@ unidecode
 psycopg2-binary
 python-dotenv
 gunicorn
+openpyxl
