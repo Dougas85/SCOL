@@ -392,7 +392,11 @@ def download_pdf():
 
 @app.route('/relatorio_excel')
 def relatorio_excel():
-    """Gera Excel com coletas por cliente (histórico completo do banco)."""
+    """
+    Gera Excel com coletas por cliente (histórico completo).
+    A query agrupa no banco — só o resultado chega ao Python,
+    evitando out-of-memory com bases grandes (670k+ registros).
+    """
     SQL = """
         SELECT
             remetente,
@@ -410,7 +414,7 @@ def relatorio_excel():
         conn = get_conn()
         cur  = conn.cursor()
         cur.execute(SQL)
-        rows = cur.fetchall()
+        rows = cur.fetchall()   # apenas linhas agregadas — muito menor que 670k
         cur.close()
         conn.close()
     except Exception as e:
@@ -421,13 +425,12 @@ def relatorio_excel():
     NAVY   = "0A1628"
     ACCENT = "2563EB"
     WHITE  = "FFFFFF"
-    LIGHT  = "E8F0FE"
-    RED    = "DC2626"
     GRAY   = "F1F5F9"
+    RED    = "DC2626"
     BC     = "DDE5F5"
 
-    def brd(style="thin"):
-        s = Side(style=style, color=BC)
+    def brd():
+        s = Side(style="thin", color=BC)
         return Border(left=s, right=s, top=s, bottom=s)
 
     def brd_total():
@@ -435,7 +438,7 @@ def relatorio_excel():
         tn = Side(style="thin",   color=BC)
         return Border(left=tn, right=tn, top=tk, bottom=tk)
 
-    wb = openpyxl.Workbook()
+    wb = openpyxl.Workbook(write_only=False)
     ws = wb.active
     ws.title = "Coletas por Cliente"
 
@@ -448,7 +451,8 @@ def relatorio_excel():
     ws.row_dimensions[1].height = 32
 
     ws.merge_cells("A2:E2")
-    ws["A2"] = f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}  •  Histórico completo  •  {len(rows)} clientes"
+    ws["A2"] = (f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                f"  •  Histórico completo  •  {len(rows)} clientes")
     ws["A2"].font      = Font(name="Arial", italic=True, size=9, color="64748B")
     ws["A2"].fill      = PatternFill("solid", fgColor="E8F0FE")
     ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
@@ -464,7 +468,7 @@ def relatorio_excel():
         c.border    = brd()
     ws.row_dimensions[3].height = 28
 
-    # Dados
+    # Dados — gravar linha a linha sem acumular tudo em memória
     for i, (remetente, cep, total, cancelada, tentativa) in enumerate(rows, 1):
         rn   = i + 3
         fill = PatternFill("solid", fgColor=GRAY if i % 2 == 0 else WHITE)
@@ -482,11 +486,15 @@ def relatorio_excel():
         ce(4, cancelada, align="center", color=RED if cancelada > 0 else NAVY)
         ce(5, tentativa, align="center", color=RED if tentativa > 0 else NAVY)
 
-    # Total
+    # Linha de total com fórmulas
     tr = len(rows) + 4
     ws.merge_cells(f"A{tr}:B{tr}")
-    for col, val in [(1, "TOTAL GERAL"), (3, f"=SUM(C4:C{tr-1})"),
-                     (4, f"=SUM(D4:D{tr-1})"), (5, f"=SUM(E4:E{tr-1})")]:
+    for col, val in [
+        (1, "TOTAL GERAL"),
+        (3, f"=SUM(C4:C{tr-1})"),
+        (4, f"=SUM(D4:D{tr-1})"),
+        (5, f"=SUM(E4:E{tr-1})")
+    ]:
         c = ws.cell(row=tr, column=col, value=val)
         c.font      = Font(name="Arial", bold=True, size=10, color=WHITE)
         c.fill      = PatternFill("solid", fgColor=NAVY)
@@ -502,13 +510,18 @@ def relatorio_excel():
     ws.column_dimensions["E"].width = 22
     ws.freeze_panes = "A4"
 
-    # Enviar como download
+    # Salvar em BytesIO e enviar — sem tocar em disco
     out = BytesIO()
     wb.save(out)
     out.seek(0)
     nome = f"relatorio_coletas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-    return send_file(out, as_attachment=True, download_name=nome,
-                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return send_file(
+        out,
+        as_attachment=True,
+        download_name=nome,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
 
 
 if __name__ == "__main__":
