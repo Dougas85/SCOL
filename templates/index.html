@@ -16,6 +16,7 @@
             --surface: #f8faff;
             --white:   #ffffff;
             --border:  #dde5f5;
+            --success: #16a34a;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,7 +29,6 @@
             overflow-x: hidden;
         }
 
-        /* ── BACKGROUND PATTERN ── */
         body::before {
             content: '';
             position: fixed;
@@ -139,13 +139,6 @@
             line-height: 1;
         }
 
-        .status-unit {
-            font-size: 0.75rem;
-            color: rgba(255,255,255,0.5);
-            font-weight: 300;
-            margin-left: 4px;
-        }
-
         /* ── UPLOAD CARD ── */
         .upload-card {
             background: var(--white);
@@ -154,6 +147,7 @@
             box-shadow: 0 4px 24px rgba(10,22,40,0.08);
             border: 1px solid var(--border);
             animation: fadeUp 0.6s 0.4s ease both;
+            margin-bottom: 16px;
         }
 
         .upload-card h5 {
@@ -197,25 +191,9 @@
             height: 100%;
         }
 
-        .drop-icon {
-            font-size: 2.2rem;
-            margin-bottom: 10px;
-            display: block;
-        }
-
-        .drop-label {
-            font-size: 0.9rem;
-            color: var(--navy);
-            font-weight: 600;
-            display: block;
-            margin-bottom: 4px;
-        }
-
-        .drop-hint {
-            font-size: 0.78rem;
-            color: var(--muted);
-            font-weight: 300;
-        }
+        .drop-icon { font-size: 2.2rem; margin-bottom: 10px; display: block; }
+        .drop-label { font-size: 0.9rem; color: var(--navy); font-weight: 600; display: block; margin-bottom: 4px; }
+        .drop-hint  { font-size: 0.78rem; color: var(--muted); font-weight: 300; }
 
         .file-selected {
             display: none;
@@ -231,7 +209,7 @@
             font-family: 'JetBrains Mono', monospace;
         }
 
-        /* ── BUTTON ── */
+        /* ── BUTTONS ── */
         .btn-process {
             width: 100%;
             padding: 14px;
@@ -265,9 +243,66 @@
             animation: shimmer 1.2s infinite;
         }
 
-        @keyframes shimmer {
-            0%   { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
+        /* ── RELATÓRIO CARD ── */
+        .report-card {
+            background: var(--white);
+            border-radius: 16px;
+            padding: 24px 32px;
+            box-shadow: 0 4px 24px rgba(10,22,40,0.08);
+            border: 1px solid var(--border);
+            animation: fadeUp 0.6s 0.5s ease both;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .report-card-info h6 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--navy);
+            margin-bottom: 4px;
+        }
+
+        .report-card-info p {
+            font-size: 0.82rem;
+            color: var(--muted);
+            font-weight: 300;
+            margin: 0;
+        }
+
+        .btn-excel {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 11px 22px;
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-family: 'Sora', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 14px rgba(22,163,74,0.3);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .btn-excel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(22,163,74,0.4);
+            color: white;
+        }
+
+        .btn-excel:active { transform: translateY(0); }
+
+        .btn-excel.loading {
+            opacity: 0.75;
+            pointer-events: none;
         }
 
         /* ── ALERTS ── */
@@ -288,12 +323,16 @@
             color: var(--muted);
             font-weight: 300;
             letter-spacing: 0.04em;
-            animation: fadeUp 0.6s 0.5s ease both;
+            animation: fadeUp 0.6s 0.6s ease both;
         }
 
         footer strong { color: var(--blue); font-weight: 600; }
 
-        /* ── ANIMATIONS ── */
+        @keyframes shimmer {
+            0%   { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
         @keyframes fadeDown {
             from { opacity: 0; transform: translateY(-18px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -333,6 +372,7 @@
         </div>
     </div>
 
+    <!-- UPLOAD -->
     <div class="upload-card">
         <h5>Enviar arquivo do dia</h5>
         <p>Aceita arquivos <strong>.txt</strong> ou <strong>.csv</strong> com os dados de coletas do dia.</p>
@@ -356,6 +396,17 @@
         </form>
     </div>
 
+    <!-- RELATÓRIO POR CLIENTE -->
+    <div class="report-card">
+        <div class="report-card-info">
+            <h6>📊 Relatório por Cliente</h6>
+            <p>Coletas repetidas por remetente — histórico completo do banco (VIVO / Telefônica)</p>
+        </div>
+        <a href="{{ url_for('relatorio_excel') }}" class="btn-excel" id="btnExcel">
+            ⬇ Baixar Excel
+        </a>
+    </div>
+
     <footer>
         <strong>Sistema de Cruzamento de Coletas</strong> — DFS &nbsp;·&nbsp; {{ base_count }} registros ativos
         <br><br>&copy; 2026 DFS. Todos os direitos reservados.
@@ -363,12 +414,13 @@
 </div>
 
 <script>
-    const fileInput  = document.getElementById('fileInput');
-    const dropZone   = document.getElementById('dropZone');
+    const fileInput    = document.getElementById('fileInput');
+    const dropZone     = document.getElementById('dropZone');
     const fileSelected = document.getElementById('fileSelected');
-    const fileName   = document.getElementById('fileName');
-    const btnProcess = document.getElementById('btnProcess');
-    const form       = document.getElementById('uploadForm');
+    const fileName     = document.getElementById('fileName');
+    const btnProcess   = document.getElementById('btnProcess');
+    const form         = document.getElementById('uploadForm');
+    const btnExcel     = document.getElementById('btnExcel');
 
     fileInput.addEventListener('change', () => {
         if (fileInput.files.length > 0) {
@@ -377,7 +429,7 @@
         }
     });
 
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
     dropZone.addEventListener('drop', e => {
         e.preventDefault();
@@ -393,6 +445,16 @@
         btnProcess.textContent = 'Processando…';
         btnProcess.classList.add('loading');
         btnProcess.disabled = true;
+    });
+
+    // Feedback no botão Excel durante geração
+    btnExcel.addEventListener('click', () => {
+        btnExcel.textContent = '⏳ Gerando…';
+        btnExcel.classList.add('loading');
+        setTimeout(() => {
+            btnExcel.textContent = '⬇ Baixar Excel';
+            btnExcel.classList.remove('loading');
+        }, 8000);
     });
 </script>
 </body>
