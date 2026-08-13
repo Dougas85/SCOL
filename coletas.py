@@ -1,15 +1,13 @@
 import os
 import re
-from io import BytesIO
+from io import BytesIO, StringIO
+import csv
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session
 import pandas as pd
 import psycopg2
 from fpdf import FPDF
 from unidecode import unidecode
-import openpyxl
-import traceback
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import sys
 import webbrowser
 from threading import Timer
@@ -429,12 +427,12 @@ def relatorio_excel():
 
     try:
         _excel_out = _gerar_excel_relatorio(rows)
-        nome = f"relatorio_coletas_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        nome = f"relatorio_coletas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
         return send_file(
             _excel_out,
             as_attachment=True,
             download_name=nome,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mimetype="text/csv; charset=utf-8"
         )
     except Exception as e:
         print(f"[RELATORIO] Erro ao gerar Excel: {e}\n{traceback.format_exc()}", flush=True)
@@ -443,103 +441,41 @@ def relatorio_excel():
 
 
 def _gerar_excel_relatorio(rows):
-    NAVY   = "0A1628"
-    ACCENT = "2563EB"
-    WHITE  = "FFFFFF"
-    GRAY   = "F1F5F9"
-    RED    = "DC2626"
-    BC     = "DDE5F5"
+    """
+    Gera CSV formatado para download como Excel.
+    Solução robusta — não depende de openpyxl (incompatível com Python 3.14).
+    O Excel abre CSV automaticamente quando a extensão é .csv.
+    """
+    si = StringIO()
+    # BOM UTF-8 para o Excel reconhecer acentos corretamente
+    si.write("\ufeff")
+    writer = csv.writer(si, delimiter=";", quoting=csv.QUOTE_ALL)
 
-    # Criar objetos de borda UMA ÚNICA VEZ — reutilizar no loop
-    # (recriar Border() por célula causa recursão infinita no openpyxl/Python 3.14)
-    _side_thin   = Side(style="thin",   color=BC)
-    _side_medium = Side(style="medium", color=NAVY)
-    BORDER_CELL  = Border(
-        left=_side_thin, right=_side_thin,
-        top=_side_thin,  bottom=_side_thin
-    )
-    BORDER_TOTAL = Border(
-        left=_side_thin,   right=_side_thin,
-        top=_side_medium,  bottom=_side_medium
-    )
+    # Cabeçalho do relatório
+    writer.writerow(["RELATÓRIO DE COLETAS REPETIDAS — VIVO / TELEFÔNICA"])
+    writer.writerow([f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                     "", "", f"Total de clientes: {len(rows)}", ""])
+    writer.writerow([])  # linha em branco
 
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Coletas por Cliente"
-
-    # Título
-    ws.merge_cells("A1:E1")
-    ws["A1"] = "Relatório de Coletas Repetidas — VIVO / Telefônica"
-    ws["A1"].font      = Font(name="Arial", bold=True, size=14, color=WHITE)
-    ws["A1"].fill      = PatternFill("solid", fgColor=NAVY)
-    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[1].height = 32
-
-    ws.merge_cells("A2:E2")
-    ws["A2"] = (f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}"
-                f"  •  Histórico completo  •  {len(rows)} clientes")
-    ws["A2"].font      = Font(name="Arial", italic=True, size=9, color="64748B")
-    ws["A2"].fill      = PatternFill("solid", fgColor="E8F0FE")
-    ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[2].height = 18
-
-    # Cabeçalho
-    HEADERS = ["REMETENTE", "CEP", "TOTAL COLETAS", "COLETA CANCELADA", "2ª TENTATIVA / CANCELADA"]
-    for col, h in enumerate(HEADERS, 1):
-        c = ws.cell(row=3, column=col, value=h)
-        c.font      = Font(name="Arial", bold=True, size=9, color=WHITE)
-        c.fill      = PatternFill("solid", fgColor=ACCENT)
-        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        c.border    = BORDER_CELL
-    ws.row_dimensions[3].height = 28
-
-    # Pré-criar fills para não recriar por linha
-    FILL_ODD  = PatternFill("solid", fgColor=WHITE)
-    FILL_EVEN = PatternFill("solid", fgColor=GRAY)
+    # Cabeçalho das colunas
+    writer.writerow(["REMETENTE", "CEP", "TOTAL COLETAS", "COLETA CANCELADA", "2ª TENTATIVA / CANCELADA"])
 
     # Dados
-    for i, (remetente, cep, total, cancelada, tentativa) in enumerate(rows, 1):
-        rn   = i + 3
-        fill = FILL_EVEN if i % 2 == 0 else FILL_ODD
-
-        for col, val, align, bold, color in [
-            (1, remetente, "left",   False, NAVY),
-            (2, cep,       "center", False, NAVY),
-            (3, total,     "center", True,  NAVY),
-            (4, cancelada, "center", False, RED if cancelada > 0 else NAVY),
-            (5, tentativa, "center", False, RED if tentativa > 0 else NAVY),
-        ]:
-            c = ws.cell(row=rn, column=col, value=val)
-            c.font      = Font(name="Arial", size=9, bold=bold, color=color)
-            c.fill      = fill
-            c.alignment = Alignment(horizontal=align, vertical="center")
-            c.border    = BORDER_CELL
+    total_geral     = 0
+    total_cancelada = 0
+    total_tentativa = 0
+    for remetente, cep, total, cancelada, tentativa in rows:
+        writer.writerow([remetente, cep, total, cancelada, tentativa])
+        total_geral     += total
+        total_cancelada += cancelada
+        total_tentativa += tentativa
 
     # Linha de total
-    tr = len(rows) + 4
-    ws.merge_cells(f"A{tr}:B{tr}")
-    for col, val in [
-        (1, "TOTAL GERAL"),
-        (3, f"=SUM(C4:C{tr-1})"),
-        (4, f"=SUM(D4:D{tr-1})"),
-        (5, f"=SUM(E4:E{tr-1})")
-    ]:
-        c = ws.cell(row=tr, column=col, value=val)
-        c.font      = Font(name="Arial", bold=True, size=10, color=WHITE)
-        c.fill      = PatternFill("solid", fgColor=NAVY)
-        c.alignment = Alignment(horizontal="center", vertical="center")
-        c.border    = BORDER_TOTAL
-    ws.row_dimensions[tr].height = 24
-
-    ws.column_dimensions["A"].width = 48
-    ws.column_dimensions["B"].width = 14
-    ws.column_dimensions["C"].width = 14
-    ws.column_dimensions["D"].width = 18
-    ws.column_dimensions["E"].width = 22
-    ws.freeze_panes = "A4"
+    writer.writerow([])
+    writer.writerow(["TOTAL GERAL", "", total_geral, total_cancelada, total_tentativa])
 
     out = BytesIO()
-    wb.save(out)
+    out.write(si.getvalue().encode("utf-8-sig"))
     out.seek(0)
     return out
 
